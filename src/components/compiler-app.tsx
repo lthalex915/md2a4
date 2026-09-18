@@ -7,9 +7,11 @@ import {
   Printer,
   BookOpen,
   Wand2,
+  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PreparePanel, emptyKinds } from "@/components/prepare-panel";
+import { LlmSettingsPanel } from "@/components/llm-settings-panel";
 import {
   compile,
   SAMPLE_MARKDOWN,
@@ -19,14 +21,18 @@ import {
 } from "@/compiler";
 import {
   applyKinds,
-  dialectImport,
-  grokPrepare,
+  enhanceWithAi,
+  hasLlmKey,
   htmlToMarkdown,
   isRichPaste,
+  loadLlmSettings,
   prepareLocal,
+  saveLlmSettings,
   type ChangeKind,
+  type LlmSettings,
   type PrepareResult,
 } from "@/assistant";
+import { DEFAULT_LLM_SETTINGS, enabledAiFeatures, type AiFeatureId } from "@/assistant/llm-settings";
 import { cn } from "@/lib/utils";
 
 const THEME_LABELS: Record<ThemeId, string> = {
@@ -57,11 +63,14 @@ export function CompilerApp() {
   const [status, setStatus] = useState("Paste Markdown, then Compile.");
   const [hydrated, setHydrated] = useState(false);
   const [localPrepare, setLocalPrepare] = useState<PrepareResult | null>(null);
-  const [grokResult, setGrokResult] = useState<PrepareResult | null>(null);
-  const [grokError, setGrokError] = useState<string | null>(null);
-  const [grokLoading, setGrokLoading] = useState(false);
-  const [useGrok, setUseGrok] = useState(false);
+  const [aiResult, setAiResult] = useState<PrepareResult | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiUsed, setAiUsed] = useState<AiFeatureId[]>([]);
+  const [useAi, setUseAi] = useState(false);
   const [kinds, setKinds] = useState<Set<ChangeKind>>(new Set());
+  const [llm, setLlm] = useState<LlmSettings>(DEFAULT_LLM_SETTINGS);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -75,6 +84,7 @@ export function CompilerApp() {
       if (savedTheme === "classic" || savedTheme === "navy" || savedTheme === "palatino") {
         setTheme(savedTheme);
       }
+      setLlm(loadLlmSettings());
     } catch {
       /* ignore */
     }
@@ -90,6 +100,15 @@ export function CompilerApp() {
       /* ignore */
     }
   }, [source, theme, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      saveLlmSettings(llm);
+    } catch {
+      /* ignore */
+    }
+  }, [llm, hydrated]);
 
   const fitPreview = useCallback(() => {
     const el = stageRef.current;
@@ -165,41 +184,47 @@ export function CompilerApp() {
     const local = prepareLocal(source);
     setLocalPrepare(local);
     setKinds(emptyKinds(local.changes));
-    setGrokResult(null);
-    setGrokError(null);
-    setUseGrok(false);
-    setGrokLoading(true);
+    setAiResult(null);
+    setAiError(null);
+    setAiUsed([]);
+    setUseAi(false);
     setStatus("Preparing notes… review the proposal before Compile.");
-    const imported = dialectImport(source);
-    void grokPrepare({ data: { source: imported, theme } })
+
+    const wantAi = hasLlmKey(llm) && enabledAiFeatures(llm).length > 0;
+    if (!wantAi) {
+      setAiLoading(false);
+      return;
+    }
+    setAiLoading(true);
+    void enhanceWithAi(source, local.markdown, local.changes, llm)
       .then((res) => {
-        if (res.ok) {
-          setGrokResult({
-            source: imported,
+        if (res.markdown !== local.markdown && res.used.length) {
+          setAiResult({
+            source: local.source,
             markdown: res.markdown,
-            changes: res.changes.length ? res.changes : local.changes,
-            via: "grok",
+            changes: res.changes,
+            via: "ai",
           });
-          setUseGrok(true);
-        } else {
-          setGrokError(res.error);
+          setAiUsed(res.used);
+          setUseAi(true);
         }
+        if (res.error) setAiError(res.error);
       })
       .catch(() => {
-        setGrokError("Grok prepare failed.");
+        setAiError("AI prepare failed.");
       })
-      .finally(() => setGrokLoading(false));
+      .finally(() => setAiLoading(false));
   };
 
   const proposedMarkdown = (() => {
     if (!localPrepare) return source;
-    if (useGrok && grokResult) return grokResult.markdown;
+    if (useAi && aiResult) return aiResult.markdown;
     if (kinds.size === 0) return localPrepare.source;
     return applyKinds(localPrepare.source, kinds);
   })();
 
   const toggleKind = (kind: ChangeKind) => {
-    setUseGrok(false);
+    setUseAi(false);
     setKinds((prev) => {
       const next = new Set(prev);
       if (next.has(kind)) next.delete(kind);
@@ -211,7 +236,7 @@ export function CompilerApp() {
   const applyPrepare = () => {
     setSource(proposedMarkdown);
     setLocalPrepare(null);
-    setGrokResult(null);
+    setAiResult(null);
     setStatus("Applied prepared Markdown. Click Compile to preview.");
   };
 
@@ -286,9 +311,9 @@ export function CompilerApp() {
             <code className="font-mono text-fg/80">$100</code> stay as text.
           </p>
           <p>
-            <strong className="text-fg/80">Prepare notes</strong> wraps lists/terms/asides, fills YAML
-            from headings already in the notes, repairs math delimiters, and converts Word/Docs paste.
-            It does not invent content. Compile stays a separate, deterministic step.
+            <strong className="text-fg/80">Prepare notes</strong> is local by default. Optional AI
+            (your key, in AI setup) only classifies short titles, leftover $, or leftover HTML — not
+            full-document rewrites.
           </p>
         </div>
       </details>
@@ -329,6 +354,15 @@ export function CompilerApp() {
           <Printer />
           Print
         </Button>
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="AI setup"
+        >
+          <Settings2 />
+          AI setup
+        </Button>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(280px,42%)_1fr]">
@@ -353,6 +387,10 @@ export function CompilerApp() {
               <Wand2 />
               Prepare notes
             </Button>
+            <Button variant="ghost" size="sm" type="button" onClick={() => setSettingsOpen(true)}>
+              <Settings2 />
+              AI setup
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -366,6 +404,11 @@ export function CompilerApp() {
               Load sample dialect
             </Button>
           </div>
+          <p className="text-xs text-muted">
+            {hasLlmKey(llm) && enabledAiFeatures(llm).length
+              ? `AI on · ${enabledAiFeatures(llm).join(", ")} · tiny jobs only`
+              : "AI off · Prepare uses local rules. Add a key in AI setup to enable features."}
+          </p>
 
           <textarea
             value={source}
@@ -383,16 +426,17 @@ export function CompilerApp() {
               proposed={proposedMarkdown}
               kinds={kinds}
               onToggleKind={toggleKind}
-              grokLoading={grokLoading}
-              grokError={grokError}
-              grok={grokResult}
-              useGrok={useGrok}
-              onToggleGrok={setUseGrok}
+              aiLoading={aiLoading}
+              aiError={aiError}
+              ai={aiResult}
+              aiUsed={aiUsed}
+              useAi={useAi}
+              onToggleAi={setUseAi}
               onApply={applyPrepare}
               onDismiss={() => {
                 setLocalPrepare(null);
-                setGrokResult(null);
-                setGrokLoading(false);
+                setAiResult(null);
+                setAiLoading(false);
               }}
             />
           ) : null}
@@ -459,6 +503,13 @@ export function CompilerApp() {
           )}
         </section>
       </div>
+      {settingsOpen ? (
+        <LlmSettingsPanel
+          settings={llm}
+          onChange={setLlm}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

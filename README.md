@@ -29,10 +29,10 @@ In the print dialog: A4 portrait, backgrounds enabled. The downloaded file is se
 
 1. Paste messy notes (plain Markdown, Word, Google Docs, or `.html`).
 2. Click **Prepare notes**.
-3. Review the proposal. Uncheck a change, or toggle **Use Grok refinement**.
+3. Review the proposal. Uncheck a local pass if you want.
 4. **Apply to editor**, then **Compile** as usual.
 
-What it may do, using only wording already in the notes:
+Local passes (always available, no key):
 
 | Pass | Effect |
 | --- | --- |
@@ -41,8 +41,20 @@ What it may do, using only wording already in the notes:
 | Structure | Bold title + list → `:::list`; term lines → `:::terms`; Key Points → `:::aside` |
 | Front matter | YAML `title` / `chapter` from `#` headings and a `Chapter N` line |
 
-It will not summarize, add examples, or fill empty sidebar cards. Grok is used only when you click Prepare; Compile stays deterministic and works offline.
+### Your own AI key
 
+**AI setup** stores a provider, model, and API key **in this browser only**. Compile does not call a model.
+
+Supported OpenAI-compatible endpoints: OpenAI, OpenRouter, DeepSeek, xAI, Groq, Mistral, Together, plus a custom base URL.
+
+Each feature is a toggle (default off). When on, the model only sees a few short snippets:
+
+- Structure: classify leftover short titles (`list` / `aside` / `skip`)
+- Front matter: copy `title` / `chapter` from the first lines
+- Math: classify leftover unmatched `$` as math or currency
+- Import: strip leftover HTML tags after the local converter
+
+Prefer a small model (`gpt-4o-mini`, `deepseek-chat`, `grok-3-mini`, …). Prompts are capped; the full notes are never sent for a rewrite.
 
 ## Markdown dialect
 

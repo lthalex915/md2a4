@@ -182,3 +182,76 @@ export function proposeStructure(source: string): string {
   }
   return restore(out.join("\n"));
 }
+
+export type StructureHint = "list" | "aside" | "skip";
+
+export type StructureCandidate = { title: string };
+
+function nextFilled(lines: string[], from: number): number {
+  let j = from;
+  while (j < lines.length && lines[j].trim() === "") j += 1;
+  return j;
+}
+
+/** Short titles in front of lists that heuristics did not wrap (not bold, not Key Points). */
+export function collectStructureCandidates(source: string): StructureCandidate[] {
+  const { text } = protectRegions(source);
+  const lines = text.split("\n");
+  const found: StructureCandidate[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].includes("@@BOX") || lines[i].includes("@@CODE")) continue;
+    const j = nextFilled(lines, i + 1);
+    if (j >= lines.length || !isListLine(lines[j])) continue;
+    if (isBoldOnly(lines[i])) continue;
+    const title = unwrapBold(lines[i]);
+    if (!title || title.startsWith("#") || title.startsWith(":::")) continue;
+    if (ASIDE_TITLE.test(title)) continue;
+    const words = title.split(/\s+/).filter(Boolean);
+    if (words.length < 1 || words.length > 8) continue;
+    if (/[.!?]$/.test(title) && words.length > 3) continue;
+    const key = title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    found.push({ title });
+    if (found.length >= 8) break;
+  }
+  return found;
+}
+
+export function applyStructureHints(
+  source: string,
+  hints: Record<string, StructureHint>,
+): string {
+  const map = new Map(Object.entries(hints).map(([k, v]) => [k.trim().toLowerCase(), v]));
+  const { text, restore } = protectRegions(source);
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const j = nextFilled(lines, i + 1);
+    const title = unwrapBold(lines[i]);
+    const hint = map.get(title.toLowerCase());
+    if (hint && hint !== "skip" && j < lines.length && isListLine(lines[j]) && !isBoldOnly(lines[i])) {
+      const listEnd = collectBlock(lines, j, (ln) => isListLine(ln) || ln.trim() === "");
+      const items = lines.slice(j, listEnd).filter((ln) => isListLine(ln));
+      if (items.length) {
+        if (hint === "aside") {
+          const anchor = lastHeadingId(lines, i);
+          const anchorAttr = anchor ? ` anchor=${anchor}` : "";
+          out.push(`:::aside${anchorAttr} kind=takeaway title="${attrTitle(title)}"`);
+        } else {
+          out.push(`:::list title="${attrTitle(title)}"`);
+        }
+        out.push(...items);
+        out.push(":::");
+        i = listEnd;
+        continue;
+      }
+    }
+    out.push(lines[i]);
+    i += 1;
+  }
+  return restore(out.join("\n"));
+}
+

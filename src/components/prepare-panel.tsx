@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import type { Change, ChangeKind, PrepareResult } from "@/assistant";
+import type { AiFeatureId } from "@/assistant/llm-settings";
 
 const KIND_LABEL: Record<ChangeKind, string> = {
   import: "Import",
@@ -13,11 +14,12 @@ type Props = {
   proposed: string;
   kinds: Set<ChangeKind>;
   onToggleKind: (kind: ChangeKind) => void;
-  grokLoading: boolean;
-  grokError: string | null;
-  grok: PrepareResult | null;
-  useGrok: boolean;
-  onToggleGrok: (on: boolean) => void;
+  aiLoading: boolean;
+  aiError: string | null;
+  ai: PrepareResult | null;
+  aiUsed: AiFeatureId[];
+  useAi: boolean;
+  onToggleAi: (on: boolean) => void;
   onApply: () => void;
   onDismiss: () => void;
 };
@@ -27,24 +29,25 @@ export function PreparePanel({
   proposed,
   kinds,
   onToggleKind,
-  grokLoading,
-  grokError,
-  grok,
-  useGrok,
-  onToggleGrok,
+  aiLoading,
+  aiError,
+  ai,
+  aiUsed,
+  useAi,
+  onToggleAi,
   onApply,
   onDismiss,
 }: Props) {
   const unchanged = proposed === local.source;
-  const visible: Change[] = useGrok && grok ? grok.changes : local.changes;
+  const visible: Change[] = useAi && ai ? ai.changes : local.changes;
 
   return (
     <div className="rounded-md border border-border bg-surface-2/70 p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="font-medium text-fg">Proposed source</p>
         <p className="text-xs text-muted">
-          {useGrok && grok
-            ? "Grok refinement · review before applying"
+          {useAi && ai
+            ? `Local + AI (${aiUsed.length ? aiUsed.join(", ") : "hints"})`
             : "Local prepare · no wording invented"}
         </p>
       </div>
@@ -53,7 +56,7 @@ export function PreparePanel({
         <ul className="mb-3 space-y-1.5 text-sm">
           {visible.map((c) => (
             <li key={c.id} className="flex items-start gap-2">
-              {useGrok && grok ? (
+              {useAi && ai ? (
                 <span className="mt-0.5 w-20 shrink-0 text-xs uppercase tracking-wide text-muted">
                   {KIND_LABEL[c.kind]}
                 </span>
@@ -81,20 +84,20 @@ export function PreparePanel({
       )}
 
       <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
-        {grokLoading ? (
-          <span className="text-muted">Grok is reviewing the notes…</span>
-        ) : grok ? (
+        {aiLoading ? (
+          <span className="text-muted">AI is classifying a few snippets…</span>
+        ) : ai ? (
           <label className="flex items-center gap-2 text-fg">
             <input
               type="checkbox"
-              checked={useGrok}
-              onChange={(e) => onToggleGrok(e.target.checked)}
+              checked={useAi}
+              onChange={(e) => onToggleAi(e.target.checked)}
               className="size-3.5 accent-accent"
             />
-            Use Grok refinement
+            Include AI hints
           </label>
-        ) : grokError ? (
-          <span className="text-muted">{grokError} Local prepare is still available.</span>
+        ) : aiError ? (
+          <span className="text-muted">{aiError} Local prepare is still available.</span>
         ) : null}
       </div>
 

@@ -62,3 +62,19 @@ export function repairMath(source: string): string {
   s = repairInnerMath(s);
   return restore(s);
 }
+
+/** Lines with an odd number of unescaped `$` — too ambiguous for local rules. */
+export function collectOddDollarLines(source: string): string[] {
+  const { text } = protectRegions(source);
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    if (line.includes("@@CODE") || line.includes("@@BOX")) continue;
+    const n = (line.match(/(?<!\\)\$/g) || []).length;
+    if (n % 2 === 1) {
+      out.push(line.trim().slice(0, 140));
+      if (out.length >= 6) break;
+    }
+  }
+  return out;
+}
+

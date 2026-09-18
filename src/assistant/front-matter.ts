@@ -86,3 +86,37 @@ export function proposeFrontMatter(source: string): string {
   if (Object.keys(fm).length === 0 && nextKeys === "") return source;
   return next;
 }
+
+function inSource(source: string, value: string): boolean {
+  return source.toLowerCase().includes(value.trim().toLowerCase());
+}
+
+/** Fill missing title/chapter only when the value already appears in the notes. */
+export function mergeYamlFields(
+  source: string,
+  extra: { title?: string | null; chapter?: string | null },
+): string {
+  const { fm, body } = extractFrontMatter(source);
+  const fields: Record<string, string> = {};
+  for (const key of YAML_KEYS) {
+    const cur = existingString(fm, key);
+    if (cur) fields[key] = cur;
+  }
+  const title = extra.title?.trim();
+  if (!fields.title && title && title.length <= 120 && inSource(body, title)) {
+    fields.title = title;
+  }
+  const chapter = extra.chapter?.trim();
+  if (!fields.chapter && chapter && /^\d+[A-Za-z]?$/.test(chapter) && inSource(body, chapter)) {
+    fields.chapter = chapter;
+  }
+  if (!fields.title && !fields.chapter && Object.keys(fm).length === 0) {
+    return proposeFrontMatter(source);
+  }
+  const next = dumpYaml(fields) + body.replace(/^\n+/, "");
+  const prevKeys = YAML_KEYS.filter((k) => existingString(fm, k)).join("|");
+  const nextKeys = YAML_KEYS.filter((k) => fields[k]).join("|");
+  if (prevKeys === nextKeys && Object.keys(fm).length > 0) return source;
+  return next;
+}
+

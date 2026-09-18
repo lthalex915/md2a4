@@ -22,7 +22,11 @@ This file is the contract for a coding agent. Implement exactly this product. Do
 - Allowed: wrap existing blocks in `:::list` / `:::terms` / `:::aside` / `:::example` / `:::equation`; fill YAML keys from headings already in the notes; repair `$` / `$$` / `\begin{align}` delimiters; convert Word/Docs/HTML paste to Markdown.
 - Forbidden in prepare: new sentences, paraphrasing, invented cards, empty boxes, writing HTML/CSS.
 - The author must review and apply. Compile still parse → IR → render → validate on the applied source.
-- Grok is opt-in per Prepare click. Heuristics must work when Grok is unavailable. Fidelity-check LLM output against the source; discard if it invents prose.
+- AI is optional and **user-keyed**. The app must not spend a platform/owner API key for Prepare. Store the key in the browser only; proxy chat-completions with SSRF checks (https, no private hosts).
+- Support OpenAI-compatible providers (OpenAI, OpenRouter, DeepSeek, xAI, Groq, Mistral, Together, custom base URL).
+- Each AI feature is a toggle, default **off**. Heuristics always run.
+- To save tokens, AI may only do tiny jobs (classify a few titles, leftover `$`, leftover HTML, copy title/chapter). Never send the full document for a rewrite. Cap prompt size and `max_tokens`.
+- Fidelity-check AI output against the source; discard if it invents prose.
 
 **Ease of use (required):**
 - Runs in the browser. Zero install beyond opening `index.html` (or a tiny local static server if modules require it).
