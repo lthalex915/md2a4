@@ -1,6 +1,6 @@
 import { compile, type ThemeId, type ValidationIssue } from "../compiler/index.ts";
 import { isFaithful } from "./fidelity.ts";
-import { parseModelJson } from "./json.ts";
+import { parseModelJson, takeMd } from "./json.ts";
 import { llmChat } from "./llm-proxy.ts";
 import { hasLlmKey, type LlmSettings } from "./llm-settings.ts";
 import { collectOddDollarLines, repairMath } from "./math-repair.ts";
@@ -108,7 +108,6 @@ function coreWords(s: string): string {
 
 export function isSafePatch(from: string, to: string, source: string): boolean {
   if (!from || from === to) return false;
-  if (from.length > 400 || to.length > 400) return false;
   if (!source.includes(from)) return false;
   const trial = source.replace(from, to);
   if (trial === source) return false;
@@ -127,7 +126,7 @@ export function applyPatches(
 ): { markdown: string; n: number } {
   let md = source;
   let n = 0;
-  for (const p of patches.slice(0, 8)) {
+  for (const p of patches) {
     const from = String(p?.from ?? "");
     const to = String(p?.to ?? "");
     if (!isSafePatch(from, to, md)) continue;
@@ -137,53 +136,32 @@ export function applyPatches(
   return { markdown: md, n };
 }
 
-function compactIssues(issues: ValidationIssue[]): string {
+function issueList(issues: ValidationIssue[]): string {
   return issues
     .filter((i) => SOURCE_FIXABLE.has(i.code))
-    .slice(0, 6)
-    .map((i) => `${i.code}: ${i.message.slice(0, 100)}`)
+    .map((i) => `${i.code}: ${i.message}`)
     .join("\n");
 }
 
-function excerpts(source: string, issues: ValidationIssue[]): string {
-  const lines = source.split("\n");
-  const picked = new Set<number>();
-  const addAround = (idx: number) => {
-    for (let k = idx - 1; k <= idx + 1; k++) {
-      if (k >= 0 && k < lines.length) picked.add(k);
-    }
-  };
-  for (const issue of issues) {
-    if (issue.code === "emoji") {
-      lines.forEach((l, i) => {
-        if (/\p{Extended_Pictographic}/u.test(l)) addAround(i);
-      });
-    }
-    if (issue.code === "dollar-math") {
-      lines.forEach((l, i) => {
-        if ((l.match(/(?<!\\)\$/g) || []).length) addAround(i);
-      });
-    }
-    const q = issue.message.match(/[“"](.+?)[”"]/);
-    if (q) {
-      const needle = q[1].slice(0, 40);
-      lines.forEach((l, i) => {
-        if (l.includes(needle)) addAround(i);
-      });
-    }
+function readPatches(raw: unknown): CopilotPatch[] {
+  if (!Array.isArray(raw)) return [];
+  const patches: CopilotPatch[] = [];
+  for (const p of raw) {
+    if (!p || typeof p !== "object") continue;
+    const from = String((p as CopilotPatch).from ?? "");
+    const to = String((p as CopilotPatch).to ?? "");
+    if (from) patches.push({ from, to });
   }
-  const idxs = [...picked].sort((a, b) => a - b).slice(0, 24);
-  if (!idxs.length) return source.slice(0, 800);
-  return idxs.map((i) => lines[i]).join("\n").slice(0, 1200);
+  return patches;
 }
 
-async function askPatches(
+async function askFix(
   settings: LlmSettings,
   issues: ValidationIssue[],
   source: string,
-): Promise<{ patches: CopilotPatch[]; error: string | null }> {
-  const list = compactIssues(issues);
-  if (!list) return { patches: [], error: null };
+): Promise<{ markdown: string | null; patches: CopilotPatch[]; error: string | null }> {
+  const list = issueList(issues);
+  if (!list) return { markdown: null, patches: [], error: null };
   const res = await llmChat({
     data: {
       baseUrl: settings.baseUrl,
@@ -193,29 +171,23 @@ async function askPatches(
         { role: "system", content: "JSON only. Copy words from the notes. Do not add sentences." },
         {
           role: "user",
-          content: `Fix notes so compile validation passes. Return JSON {"patches":[{"from":"...","to":"..."}]}. Only delimiter, emoji, empty-fence, or copy-existing-words patches.\n\nIssues:\n${list}\n\nExcerpts:\n${excerpts(source, issues)}`,
+          content: `Fix the notes so compile validation passes. Return JSON {"md":"<the complete notes>"} and/or {"patches":[{"from":"...","to":"..."}]}. Keep currency like $100. Do not invent sentences.\n\nIssues:\n${list}\n\nNotes:\n${source}`,
         },
       ],
     },
   });
-  if (!res.ok) return { patches: [], error: res.error };
+  if (!res.ok) return { markdown: null, patches: [], error: res.error };
   const json = parseModelJson(res.text);
-  if (!json || typeof json !== "object") return { patches: [], error: "The model did not return JSON." };
-  const raw = (json as { patches?: unknown }).patches;
-  if (!Array.isArray(raw)) return { patches: [], error: "The model did not return patches." };
-  const patches: CopilotPatch[] = [];
-  for (const p of raw.slice(0, 8)) {
-    if (!p || typeof p !== "object") continue;
-    const from = String((p as CopilotPatch).from ?? "");
-    const to = String((p as CopilotPatch).to ?? "");
-    if (from) patches.push({ from, to });
-  }
-  return { patches, error: null };
+  if (!json || typeof json !== "object") return { markdown: null, patches: [], error: "The model did not return JSON." };
+  const rec = json as { md?: unknown; patches?: unknown };
+  const full = takeMd(rec);
+  const markdown = full && isFaithful(source, full).ok ? full : null;
+  return { markdown, patches: readPatches(rec.patches), error: null };
 }
 
 /**
  * Propose source edits that reduce validation errors.
- * Local heuristics always run. AI is a tiny BYOK JSON job (user key only).
+ * Local heuristics always run. Optional BYOK uses the full notes (user key only).
  */
 export async function proposeFidelityFix(
   source: string,
@@ -239,18 +211,21 @@ export async function proposeFidelityFix(
       remaining.some((i) => SOURCE_FIXABLE.has(i.code)),
   );
   if (wantAi && settings) {
-    const asked = await askPatches(settings, remaining, md);
+    const asked = await askFix(settings, remaining, md);
     if (asked.error) error = asked.error;
-    if (asked.patches.length) {
+    let next = md;
+    if (asked.markdown) next = asked.markdown;
+    else if (asked.patches.length) {
       const applied = applyPatches(md, asked.patches);
-      if (applied.n) {
-        const nextIssues = compile(applied.markdown, theme).issues;
-        if (nextIssues.length <= remaining.length) {
-          md = applied.markdown;
-          remaining = nextIssues;
-          usedAi = true;
-          summaries.push(`AI applied ${applied.n} small source patch${applied.n === 1 ? "" : "es"}.`);
-        }
+      if (applied.n) next = applied.markdown;
+    }
+    if (next !== md) {
+      const nextIssues = compile(next, theme).issues;
+      if (nextIssues.length <= remaining.length) {
+        md = next;
+        remaining = nextIssues;
+        usedAi = true;
+        summaries.push("AI edited the notes to clear validation errors.");
       }
     }
   }

@@ -68,6 +68,14 @@ describe("fidelity copilot patches", () => {
     assert.equal(n, 1);
     assert.equal(markdown, "Use $E=mc^2$\n");
   });
+
+  it("does not cap patch length", () => {
+    const block = "a".repeat(500);
+    const src = `Start ${block} end\n`;
+    const { n, markdown } = applyPatches(src, [{ from: block, to: `$${block}$` }]);
+    assert.equal(n, 1);
+    assert.equal(markdown, `Start $${block}$ end\n`);
+  });
 });
 
 describe("BYOK invariant", () => {
@@ -82,5 +90,6 @@ describe("BYOK invariant", () => {
     assert.doesNotMatch(src, /process\.env/);
     assert.doesNotMatch(src, /XAI_API_KEY/);
     assert.match(src, /data\?\.apiKey/);
+    assert.doesNotMatch(src, /MAX_MESSAGE_CHARS/);
   });
 });

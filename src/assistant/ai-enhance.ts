@@ -1,9 +1,8 @@
 import { llmChat } from "./llm-proxy.ts";
 import { mergeYamlFields } from "./front-matter.ts";
-import { collectOddDollarLines } from "./math-repair.ts";
 import { applyStructureHints, collectStructureCandidates, type StructureHint } from "./structure.ts";
 import { isFaithful } from "./fidelity.ts";
-import { parseModelJson } from "./json.ts";
+import { parseModelJson, takeMd } from "./json.ts";
 import type { Change } from "./types.ts";
 import {
   enabledAiFeatures,
@@ -35,10 +34,21 @@ async function ask(
   return { ok: true, json };
 }
 
-function leftoverHtml(md: string): string | null {
-  if (!/<[a-z][\s/][^>]*>/i.test(md)) return null;
-  const m = md.match(/<[^>]+>[\s\S]{0,360}/i);
-  return m ? m[0].slice(0, 420) : null;
+async function askNotes(
+  settings: LlmSettings,
+  instruction: string,
+  md: string,
+): Promise<{ ok: true; md: string } | { ok: false; error: string }> {
+  const res = await ask(
+    settings,
+    `${instruction}\n\nReturn JSON {"md":"<the complete notes>"}.\n\n${md}`,
+  );
+  if (!res.ok) return res;
+  const next = takeMd(res.json);
+  if (!next) return { ok: false, error: "The model did not return notes." };
+  const faithful = isFaithful(md, next);
+  if (!faithful.ok) return { ok: false, error: faithful.reason || "AI proposed wording that is not in the source." };
+  return { ok: true, md: next };
 }
 
 export type AiEnhanceResult = {
@@ -64,120 +74,96 @@ export async function enhanceWithAi(
     return { markdown: md, changes, used, error: null };
   }
 
-  if (on.includes("import")) {
-    const frag = leftoverHtml(md);
-    if (frag) {
-      const res = await ask(
-        settings,
-        `Strip tags. Keep the same words. Return JSON {"md":"..."}\n\n${frag}`,
-      );
-      if (res.ok && res.json && typeof res.json === "object" && "md" in res.json) {
-        const next = String((res.json as { md: unknown }).md ?? "");
-        if (next && isFaithful(frag, next).ok) {
-          md = md.replace(frag, next.trim());
-          used.push("import");
-          changes.push({
-            id: "ai-import",
-            kind: "import",
-            summary: "AI stripped leftover HTML tags.",
-          });
-        }
-      } else if (!res.ok) errors.push(res.error);
-    }
+  if (on.includes("import") && /<[a-z][\s/][^>]*>/i.test(md)) {
+    const res = await askNotes(
+      settings,
+      "Strip leftover HTML tags. Keep the same words. Return the complete notes.",
+      md,
+    );
+    if (res.ok && res.md !== md) {
+      md = res.md;
+      used.push("import");
+      changes.push({
+        id: "ai-import",
+        kind: "import",
+        summary: "AI stripped leftover HTML tags.",
+      });
+    } else if (!res.ok) errors.push(res.error);
   }
 
   if (on.includes("math")) {
-    const odd = collectOddDollarLines(md);
-    if (odd.length) {
-      const res = await ask(
-        settings,
-        `Each line has a stray $. Classify math or currency. JSON object of index→label.\n${odd.map((l, i) => `${i}: ${l}`).join("\n")}`,
-      );
-      if (res.ok && res.json && typeof res.json === "object") {
-        const labels = res.json as Record<string, unknown>;
-        let n = 0;
-        odd.forEach((line, i) => {
-          if (String(labels[String(i)] || labels[i] || "") === "currency") return;
-          if (String(labels[String(i)] || labels[i] || "") !== "math") return;
-          if (!line.startsWith("$") || line.endsWith("$")) return;
-          const closed = `${line}$`;
-          if (md.includes(line)) {
-            md = md.replace(line, closed);
-            n += 1;
-          }
-        });
-        if (n) {
-          used.push("math");
-          changes.push({
-            id: "ai-math",
-            kind: "math",
-            summary: `AI closed ${n} unmatched $ math span${n === 1 ? "" : "s"}.`,
-          });
-        }
-      } else if (!res.ok) errors.push(res.error);
-    }
+    const res = await askNotes(
+      settings,
+      "Repair math delimiters ($…$, $$…$$, unclosed TeX). Keep currency like $100. Do not rewrite formulas. Return the complete notes.",
+      md,
+    );
+    if (res.ok && res.md !== md) {
+      md = res.md;
+      used.push("math");
+      changes.push({
+        id: "ai-math",
+        kind: "math",
+        summary: "AI repaired math delimiters in the notes.",
+      });
+    } else if (!res.ok) errors.push(res.error);
   }
 
   if (on.includes("structure")) {
     const cands = collectStructureCandidates(md);
-    if (cands.length) {
-      const res = await ask(
-        settings,
-        `Classify each title that sits above a list. Values: list, aside, skip. JSON object title→value.\n${cands.map((c) => c.title).join("\n")}`,
-      );
-      if (res.ok && res.json && typeof res.json === "object") {
-        const hints: Record<string, StructureHint> = {};
-        for (const c of cands) {
-          const v = String(
-            (res.json as Record<string, unknown>)[c.title] ?? "",
-          ).toLowerCase();
-          if (v === "list" || v === "aside" || v === "skip") hints[c.title] = v;
-        }
-        const next = applyStructureHints(md, hints);
-        if (next !== md) {
-          md = next;
-          used.push("structure");
-          changes.push({
-            id: "ai-structure",
-            kind: "structure",
-            summary: "AI labeled extra titled lists already in the notes.",
-          });
-        }
-      } else if (!res.ok) errors.push(res.error);
-    }
+    const hintLine = cands.length
+      ? `Titles that sit above lists:\n${cands.map((c) => c.title).join("\n")}\n`
+      : "";
+    const res = await ask(
+      settings,
+      `Wrap titled lists already in the notes as :::list or :::aside. Values for each title: list, aside, skip. You may also return the complete notes.\n${hintLine}JSON {"hints":{"<title>":"list"|"aside"|"skip"}, "md"?: "<complete notes>"}.\n\n${md}`,
+    );
+    if (res.ok && res.json && typeof res.json === "object") {
+      const rec = res.json as { hints?: unknown; md?: unknown };
+      const hints: Record<string, StructureHint> = {};
+      const rawHints =
+        rec.hints && typeof rec.hints === "object" && !Array.isArray(rec.hints)
+          ? (rec.hints as Record<string, unknown>)
+          : (res.json as Record<string, unknown>);
+      for (const c of cands) {
+        const v = String(rawHints[c.title] ?? "").toLowerCase();
+        if (v === "list" || v === "aside" || v === "skip") hints[c.title] = v;
+      }
+      let next = Object.keys(hints).length ? applyStructureHints(md, hints) : md;
+      const full = takeMd(res.json);
+      if (full && isFaithful(md, full).ok) next = full;
+      if (next !== md) {
+        md = next;
+        used.push("structure");
+        changes.push({
+          id: "ai-structure",
+          kind: "structure",
+          summary: "AI labeled titled lists already in the notes.",
+        });
+      }
+    } else if (!res.ok) errors.push(res.error);
   }
 
   if (on.includes("frontMatter")) {
-    const head = source
-      .replace(/^---[\s\S]*?---\s*/, "")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .slice(0, 10)
-      .join("\n")
-      .slice(0, 500);
-    if (head) {
-      const res = await ask(
-        settings,
-        `Copy title and chapter number if present. JSON {"title":string|null,"chapter":string|null}. Chapter must be like "4" or "4A".\n${head}`,
-      );
-      if (res.ok && res.json && typeof res.json === "object") {
-        const rec = res.json as { title?: unknown; chapter?: unknown };
-        const next = mergeYamlFields(md, {
-          title: typeof rec.title === "string" ? rec.title : null,
-          chapter: typeof rec.chapter === "string" ? rec.chapter : null,
+    const res = await ask(
+      settings,
+      `Copy title and chapter number if present. JSON {"title":string|null,"chapter":string|null}. Chapter must be like "4" or "4A".\n\n${md}`,
+    );
+    if (res.ok && res.json && typeof res.json === "object") {
+      const rec = res.json as { title?: unknown; chapter?: unknown };
+      const next = mergeYamlFields(md, {
+        title: typeof rec.title === "string" ? rec.title : null,
+        chapter: typeof rec.chapter === "string" ? rec.chapter : null,
+      });
+      if (next !== md) {
+        md = next;
+        used.push("frontMatter");
+        changes.push({
+          id: "ai-fm",
+          kind: "front-matter",
+          summary: "AI copied title/chapter from the notes.",
         });
-        if (next !== md) {
-          md = next;
-          used.push("frontMatter");
-          changes.push({
-            id: "ai-fm",
-            kind: "front-matter",
-            summary: "AI copied title/chapter from the opening lines.",
-          });
-        }
-      } else if (!res.ok) errors.push(res.error);
-    }
+      }
+    } else if (!res.ok) errors.push(res.error);
   }
 
   const faithful = isFaithful(source, md);

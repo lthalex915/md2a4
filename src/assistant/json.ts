@@ -20,3 +20,9 @@ export function parseModelJson(text: string): unknown | null {
     return null;
   }
 }
+
+export function takeMd(json: unknown): string | null {
+  if (!json || typeof json !== "object") return null;
+  const md = (json as { md?: unknown }).md;
+  return typeof md === "string" && md.length ? md : null;
+}

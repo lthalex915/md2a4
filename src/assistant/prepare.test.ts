@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { dialectImport, htmlToMarkdown } from "./normalize.ts";
-import { repairMath } from "./math-repair.ts";
-import { proposeStructure } from "./structure.ts";
+import { collectOddDollarLines, repairMath } from "./math-repair.ts";
+import { collectStructureCandidates, proposeStructure } from "./structure.ts";
 import { proposeFrontMatter } from "./front-matter.ts";
 import { isFaithful } from "./fidelity.ts";
 import { prepareLocal } from "./prepare.ts";
@@ -47,6 +47,13 @@ describe("math repair", () => {
     const out = repairMath("Force $F_net = ma$.");
     assert.match(out, /\$F_\{net\} = ma\$/);
   });
+
+  it("collects every odd-dollar line, not a short prefix", () => {
+    const lines = Array.from({ length: 12 }, (_, i) => `Take $F_${i} leftover on this long formula line ${"x".repeat(160)}`);
+    const odd = collectOddDollarLines(lines.join("\n"));
+    assert.equal(odd.length, 12);
+    assert.ok(odd.every((l) => l.length > 140));
+  });
 });
 
 describe("structure", () => {
@@ -76,6 +83,12 @@ describe("structure", () => {
     const src = "A sentence.\n\n- just a list\n- still a list\n";
     const out = proposeStructure(src);
     assert.doesNotMatch(out, /:::/);
+  });
+
+  it("collects every leftover titled list, not a cap of eight", () => {
+    const chunks = Array.from({ length: 12 }, (_, i) => `Topic ${i}\n\n- item ${i}\n`);
+    const cands = collectStructureCandidates(chunks.join("\n"));
+    assert.equal(cands.length, 12);
   });
 });
 

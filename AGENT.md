@@ -25,8 +25,7 @@ This file is the contract for a coding agent. Implement exactly this product. Do
 - AI is optional and **user-keyed (BYOK)**. The app must not spend a platform/owner API key (`XAI_API_KEY` or any `process.env` secret) for Prepare, Copilot, or Test connection. Store the key in the browser only; proxy chat-completions with SSRF checks (https, no private hosts). The request body `apiKey` is the sole credential.
 - Support OpenAI-compatible providers (OpenAI, OpenRouter, DeepSeek, xAI, Groq, Mistral, Together, custom base URL). Optimize BYOK defaults for **DeepSeek V4.1 Flash**: `deepseek-flash` on `api.deepseek.com`, `deepseek/deepseek-v4.1-flash` on OpenRouter. Always send `thinking: {type:"disabled"}` / `reasoning.effort: "none"` plus `response_format: json_object` for those jobs (Flash thinks at high effort by default).
 - Each AI feature is a toggle, default **off**. Heuristics always run.
-- To save tokens, AI may only do tiny jobs (classify a few titles, leftover `$`, leftover HTML, copy title/chapter, small `{from,to}` source patches on validation errors). Never send the full document for a rewrite. Cap **prompt** size. Do **not** cap completion / output tokens (omit `max_tokens` on real tasks so replies are not cut off).
-- Fidelity-check AI output against the source; discard if it invents prose.
+- Send the **full notes** to the model when an AI feature is on. Do not truncate prompts, snippets, patch counts, or completion tokens. Fidelity-check AI output against the source; discard if it invents prose.
 - **Fidelity copilot** (feature 6): after Compile, if validation errors remain, propose source edits (local heuristics first: strip emoji, repair `$` delimiters, drop empty fences). Optional BYOK JSON patches. Review + apply, then recompile. Never writes HTML/CSS. Compiler-only failures (MathJax config, theme forbids) are not “fixed” by inventing notes.
 
 **Ease of use (required):**

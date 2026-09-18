@@ -1,9 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { chatCompletionsUrl } from "./llm-url.ts";
 
-const MAX_MESSAGE_CHARS = 2500;
 const PING_TIMEOUT_MS = 20_000;
-const TASK_TIMEOUT_MS = 120_000;
+const TASK_TIMEOUT_MS = 300_000;
 
 export type LlmChatInput = {
   baseUrl: string;
@@ -45,8 +44,8 @@ export function chatCompletionsBody(input: {
   const url = input.url ?? "";
   const deepseek = isDeepSeekTarget(input.model, url);
   if (deepseek) {
-    // V4.1 Flash thinks at high effort by default. That burns tokens and
-    // wraps JSON in a chain-of-thought — disable it for these tiny jobs.
+    // V4.1 Flash thinks at high effort by default. That wraps JSON in a
+    // chain-of-thought — disable it so the model answers directly.
     body.thinking = { type: "disabled" };
     body.reasoning_effort = "none";
     if (url.includes("openrouter.ai")) {
@@ -60,12 +59,12 @@ export function chatCompletionsBody(input: {
 }
 
 /**
- * Forward a tiny chat-completions call using **only** the key the user typed
+ * Forward a chat-completions call using **only** the key the user typed
  * in AI setup. This must never read `process.env.XAI_API_KEY`,
  * `OPENAI_API_KEY`, or any other platform/owner secret.
  *
- * Output tokens are uncapped unless the caller passes `maxTokens` (used only
- * by Test connection). Prompt size stays bounded.
+ * The full notes are sent. Completion tokens are uncapped unless the caller
+ * passes `maxTokens` (Test connection only).
  */
 export const llmChat = createServerFn({ method: "POST" })
   .validator((d: LlmChatInput) => d)
@@ -83,10 +82,10 @@ export const llmChat = createServerFn({ method: "POST" })
       return { ok: false, error: e instanceof Error ? e.message : "Invalid API URL." };
     }
 
-    const messages = Array.isArray(data?.messages) ? data.messages.slice(0, 3) : [];
+    const messages = Array.isArray(data?.messages) ? data.messages : [];
     const compact = messages.map((m) => ({
       role: m.role === "system" ? "system" : "user",
-      content: String(m.content ?? "").slice(0, MAX_MESSAGE_CHARS),
+      content: String(m.content ?? ""),
     }));
     if (!compact.some((m) => m.content.trim())) {
       return { ok: false, error: "Nothing to send to the model." };

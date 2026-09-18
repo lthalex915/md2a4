@@ -85,7 +85,7 @@ export function PreparePanel({
 
       <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
         {aiLoading ? (
-          <span className="text-muted">AI is classifying a few snippets…</span>
+          <span className="text-muted">AI is reading the full notes…</span>
         ) : ai ? (
           <label className="flex items-center gap-2 text-fg">
             <input

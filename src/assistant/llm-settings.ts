@@ -72,7 +72,7 @@ export const LLM_PROVIDERS: {
     label: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
     model: OPENROUTER_DEEPSEEK_FLASH_MODEL,
-    hint: "Default model is DeepSeek V4.1 Flash. Thinking is turned off automatically so these tiny JSON jobs stay cheap.",
+    hint: "Default model is DeepSeek V4.1 Flash. Thinking is turned off so the model answers in JSON, not a chain-of-thought.",
   },
   {
     id: "deepseek",
@@ -122,27 +122,27 @@ export const AI_FEATURES: { id: AiFeatureId; label: string; detail: string }[] =
   {
     id: "structure",
     label: "Structure hints",
-    detail: "Classify a few short titles in front of lists (list / aside / skip). Heuristics still wrap bold titles.",
+    detail: "Wrap titled lists the local rules missed. The model sees the full notes.",
   },
   {
     id: "frontMatter",
     label: "Front matter",
-    detail: "Copy title and chapter number from the first lines if heuristics missed them.",
+    detail: "Copy title and chapter number from the notes if heuristics missed them.",
   },
   {
     id: "math",
     label: "Math delimiters",
-    detail: "Classify leftover unmatched $ lines as math or currency. No formula rewrites.",
+    detail: "Repair leftover $ math delimiters in the full notes. Currency like $100 is kept.",
   },
   {
     id: "import",
     label: "Paste cleanup",
-    detail: "Only if leftover HTML tags remain after the local converter.",
+    detail: "Strip leftover HTML tags after the local converter. The model sees the full notes.",
   },
   {
     id: "fidelity",
     label: "Fidelity copilot",
-    detail: "After Compile, suggest tiny source patches that clear validation errors. Never invents sentences.",
+    detail: "After Compile, edit the notes so validation errors clear. Never invents sentences.",
   },
 ];
 

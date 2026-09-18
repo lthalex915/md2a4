@@ -214,7 +214,6 @@ export function collectStructureCandidates(source: string): StructureCandidate[]
     if (seen.has(key)) continue;
     seen.add(key);
     found.push({ title });
-    if (found.length >= 8) break;
   }
   return found;
 }

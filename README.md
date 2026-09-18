@@ -145,15 +145,15 @@ This project **does not** use a built-in OpenAI, xAI, or other service key. If y
 5. Turn on only the features you want (all default **off**).
 6. Optional: **Test connection**.
 
-Flash thinks by default. The app turns thinking **off** and asks for JSON, so these tiny jobs stay fast and cheap. Replies are **not** capped with `max_tokens`.
+Flash thinks by default. The app turns thinking **off** and asks for JSON, so replies are the notes themselves, not a chain-of-thought. The **full notes** go to the model — prompts and replies are not truncated.
 
-When a feature is on, the model only sees a few short snippets — never a full-document rewrite:
+When a feature is on:
 
-- **Structure:** classify leftover short titles (`list` / `aside` / `skip`)
-- **Front matter:** copy `title` / `chapter` from the first lines
-- **Math:** classify leftover unmatched `$` as math or currency
+- **Structure:** wrap titled lists the local rules missed (`:::list` / `:::aside`)
+- **Front matter:** copy `title` / `chapter` from the notes
+- **Math:** repair leftover `$` delimiters; keep currency like `$100`
 - **Paste cleanup:** strip leftover HTML tags after the local converter
-- **Fidelity copilot:** after Compile, suggest tiny source patches that clear validation errors
+- **Fidelity copilot:** after Compile, edit the notes so validation errors clear
 
 You can use the compiler forever with AI off.
 
@@ -162,7 +162,7 @@ You can use the compiler forever with AI off.
 After **Compile**, if the bottom panel lists errors:
 
 1. Click **Fix notes** (local repairs: emoji, `$` math delimiters, empty boxes).
-2. If you turned on **Fidelity copilot** and added your key, the button is **Fix with AI** and may add a few extra patches.
+2. If you turned on **Fidelity copilot** and added your key, the button is **Fix with AI**. The model sees the full notes.
 3. Read the proposal, then **Apply and recompile**.
 
 The copilot edits **your Markdown**, not the HTML/CSS. It will not invent new sentences. Some errors are compiler/theme bugs and cannot be patched from the notes.

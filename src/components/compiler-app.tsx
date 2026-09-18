@@ -462,7 +462,7 @@ export function CompilerApp() {
           </div>
           <p className="text-xs text-muted">
             {hasLlmKey(llm) && enabledAiFeatures(llm).length
-              ? `AI on · ${enabledLabels(llm)} · your key, tiny jobs only`
+              ? `AI on · ${enabledLabels(llm)} · your key, full notes`
               : "AI off · Prepare uses local rules. Add your own key in AI setup — this app has none."}
           </p>
 
