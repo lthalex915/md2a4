@@ -8,7 +8,7 @@ export type LlmProviderId =
   | "together"
   | "compat";
 
-export type AiFeatureId = "structure" | "frontMatter" | "math" | "import";
+export type AiFeatureId = "structure" | "frontMatter" | "math" | "import" | "fidelity";
 
 export type LlmSettings = {
   provider: LlmProviderId;
@@ -51,7 +51,7 @@ export const LLM_PROVIDERS: {
     label: "xAI",
     baseUrl: "https://api.x.ai/v1",
     model: "grok-3-mini",
-    hint: "Your xAI key. Prefer a mini model for prepare.",
+    hint: "Your xAI key. Prefer a mini model. This app never uses a built-in xAI key.",
   },
   {
     id: "groq",
@@ -104,6 +104,11 @@ export const AI_FEATURES: { id: AiFeatureId; label: string; detail: string }[] =
     label: "Paste cleanup",
     detail: "Only if leftover HTML tags remain after the local converter.",
   },
+  {
+    id: "fidelity",
+    label: "Fidelity copilot",
+    detail: "After Compile, suggest tiny source patches that clear validation errors. Never invents sentences.",
+  },
 ];
 
 export const DEFAULT_LLM_SETTINGS: LlmSettings = {
@@ -116,6 +121,7 @@ export const DEFAULT_LLM_SETTINGS: LlmSettings = {
     frontMatter: false,
     math: false,
     import: false,
+    fidelity: false,
   },
 };
 
@@ -143,6 +149,7 @@ export function loadLlmSettings(): LlmSettings {
         frontMatter: Boolean(parsed.features?.frontMatter),
         math: Boolean(parsed.features?.math),
         import: Boolean(parsed.features?.import),
+        fidelity: Boolean(parsed.features?.fidelity),
       },
     };
   } catch {

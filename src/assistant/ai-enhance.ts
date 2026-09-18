@@ -3,6 +3,7 @@ import { mergeYamlFields } from "./front-matter.ts";
 import { collectOddDollarLines } from "./math-repair.ts";
 import { applyStructureHints, collectStructureCandidates, type StructureHint } from "./structure.ts";
 import { isFaithful } from "./fidelity.ts";
+import { parseModelJson } from "./json.ts";
 import type { Change } from "./types.ts";
 import {
   enabledAiFeatures,
@@ -12,20 +13,6 @@ import {
 } from "./llm-settings.ts";
 
 const SYS = "JSON only. Copy words from the notes. Do not add sentences.";
-
-function parseJson(text: string): unknown | null {
-  const raw = text.trim();
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fence ? fence[1].trim() : raw;
-  const start = body.search(/[{[]/);
-  const end = Math.max(body.lastIndexOf("}"), body.lastIndexOf("]"));
-  if (start < 0 || end < start) return null;
-  try {
-    return JSON.parse(body.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-}
 
 async function ask(
   settings: LlmSettings,
@@ -45,7 +32,7 @@ async function ask(
     },
   });
   if (!res.ok) return res;
-  const json = parseJson(res.text);
+  const json = parseModelJson(res.text);
   if (json == null) return { ok: false, error: "The model did not return JSON." };
   return { ok: true, json };
 }
@@ -73,7 +60,7 @@ export async function enhanceWithAi(
   const changes = [...localChanges];
   let md = localMarkdown;
   const errors: string[] = [];
-  const on = enabledAiFeatures(settings);
+  const on = enabledAiFeatures(settings).filter((id) => id !== "fidelity");
 
   if (!hasLlmKey(settings) || on.length === 0) {
     return { markdown: md, changes, used, error: null };

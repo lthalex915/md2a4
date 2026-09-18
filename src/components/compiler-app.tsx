@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { PreparePanel, emptyKinds } from "@/components/prepare-panel";
 import { LlmSettingsPanel } from "@/components/llm-settings-panel";
+import { ValidationPanel } from "@/components/validation-panel";
 import {
   compile,
   SAMPLE_MARKDOWN,
@@ -27,12 +28,14 @@ import {
   isRichPaste,
   loadLlmSettings,
   prepareLocal,
+  proposeFidelityFix,
   saveLlmSettings,
   type ChangeKind,
+  type CopilotResult,
   type LlmSettings,
   type PrepareResult,
 } from "@/assistant";
-import { DEFAULT_LLM_SETTINGS, enabledAiFeatures, type AiFeatureId } from "@/assistant/llm-settings";
+import { AI_FEATURES, DEFAULT_LLM_SETTINGS, enabledAiFeatures, type AiFeatureId } from "@/assistant/llm-settings";
 import { cn } from "@/lib/utils";
 
 const THEME_LABELS: Record<ThemeId, string> = {
@@ -54,6 +57,12 @@ function slugFilename(title: string | null): string {
   return `${s || "document"}.html`;
 }
 
+function enabledLabels(settings: LlmSettings): string {
+  return AI_FEATURES.filter((f) => settings.features[f.id])
+    .map((f) => f.label)
+    .join(", ");
+}
+
 export function CompilerApp() {
   const [source, setSource] = useState("");
   const [theme, setTheme] = useState<ThemeId>("classic");
@@ -71,6 +80,9 @@ export function CompilerApp() {
   const [kinds, setKinds] = useState<Set<ChangeKind>>(new Set());
   const [llm, setLlm] = useState<LlmSettings>(DEFAULT_LLM_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [copilot, setCopilot] = useState<CopilotResult | null>(null);
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -125,16 +137,25 @@ export function CompilerApp() {
     return () => window.removeEventListener("resize", fitPreview);
   }, [fitPreview, html]);
 
+  const applyCompileResult = useCallback(
+    (result: ReturnType<typeof compile>, label?: string) => {
+      setHtml(result.html);
+      setIssues(result.issues);
+      setBlockCount(result.ir.blocks.length);
+      const err = result.issues.length;
+      setStatus(
+        label ??
+          `Compiled · ${theme} · ${result.ir.blocks.length} blocks · ${err} validation ${err === 1 ? "error" : "errors"}`,
+      );
+    },
+    [theme],
+  );
+
   const runCompile = useCallback(() => {
-    const result = compile(source, theme);
-    setHtml(result.html);
-    setIssues(result.issues);
-    setBlockCount(result.ir.blocks.length);
-    const err = result.issues.length;
-    setStatus(
-      `Compiled · ${theme} · ${result.ir.blocks.length} blocks · ${err} validation ${err === 1 ? "error" : "errors"}`,
-    );
-  }, [source, theme]);
+    setCopilot(null);
+    setCopilotError(null);
+    applyCompileResult(compile(source, theme));
+  }, [source, theme, applyCompileResult]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -154,6 +175,7 @@ export function CompilerApp() {
       const isHtml = /\.html?$/i.test(file.name) || file.type === "text/html" || isRichPaste(text);
       const next = isHtml ? htmlToMarkdown(text) : text;
       setSource(next);
+      setCopilot(null);
       setStatus(
         isHtml
           ? `Converted ${file.name} to Markdown. Review, then Compile.`
@@ -173,6 +195,7 @@ export function CompilerApp() {
     const end = el.selectionEnd ?? source.length;
     const next = source.slice(0, start) + md + source.slice(end);
     setSource(next);
+    setCopilot(null);
     setStatus("Converted pasted document to Markdown. Review, then Compile.");
   };
 
@@ -190,7 +213,7 @@ export function CompilerApp() {
     setUseAi(false);
     setStatus("Preparing notes… review the proposal before Compile.");
 
-    const wantAi = hasLlmKey(llm) && enabledAiFeatures(llm).length > 0;
+    const wantAi = hasLlmKey(llm) && enabledAiFeatures(llm).some((id) => id !== "fidelity");
     if (!wantAi) {
       setAiLoading(false);
       return;
@@ -238,6 +261,36 @@ export function CompilerApp() {
     setLocalPrepare(null);
     setAiResult(null);
     setStatus("Applied prepared Markdown. Click Compile to preview.");
+  };
+
+  const runCopilot = () => {
+    if (!issues.length) return;
+    setCopilotLoading(true);
+    setCopilotError(null);
+    const useAiFix = Boolean(llm.features.fidelity && hasLlmKey(llm));
+    void proposeFidelityFix(source, issues, theme, llm, useAiFix)
+      .then((res) => {
+        setCopilot(res.markdown !== source ? res : null);
+        if (res.error) setCopilotError(res.error);
+      })
+      .catch(() => {
+        setCopilotError("Fix failed.");
+      })
+      .finally(() => setCopilotLoading(false));
+  };
+
+  const applyCopilot = () => {
+    if (!copilot) return;
+    const next = copilot.markdown;
+    setSource(next);
+    setCopilot(null);
+    setCopilotError(null);
+    const result = compile(next, theme);
+    const err = result.issues.length;
+    applyCompileResult(
+      result,
+      `Applied validation fixes · ${theme} · ${result.ir.blocks.length} blocks · ${err} validation ${err === 1 ? "error" : "errors"}`,
+    );
   };
 
   const download = () => {
@@ -288,6 +341,7 @@ export function CompilerApp() {
 
   const errorCount = issues.length;
   const compiled = blockCount !== null;
+  const canAiFix = Boolean(llm.features.fidelity && hasLlmKey(llm));
 
   const dialect = useMemo(
     () => (
@@ -312,8 +366,9 @@ export function CompilerApp() {
           </p>
           <p>
             <strong className="text-fg/80">Prepare notes</strong> is local by default. Optional AI
-            (your key, in AI setup) only classifies short titles, leftover $, or leftover HTML — not
-            full-document rewrites.
+            uses <strong className="text-fg/80">your</strong> key only (AI setup) — never a built-in
+            service key. After Compile, <strong className="text-fg/80">Fix notes</strong> can clear
+            validation errors without inventing wording.
           </p>
         </div>
       </details>
@@ -397,6 +452,7 @@ export function CompilerApp() {
               type="button"
               onClick={() => {
                 setSource(SAMPLE_MARKDOWN);
+                setCopilot(null);
                 setStatus("Sample dialect loaded. Click Compile to preview.");
               }}
             >
@@ -406,13 +462,16 @@ export function CompilerApp() {
           </div>
           <p className="text-xs text-muted">
             {hasLlmKey(llm) && enabledAiFeatures(llm).length
-              ? `AI on · ${enabledAiFeatures(llm).join(", ")} · tiny jobs only`
-              : "AI off · Prepare uses local rules. Add a key in AI setup to enable features."}
+              ? `AI on · ${enabledLabels(llm)} · your key, tiny jobs only`
+              : "AI off · Prepare uses local rules. Add your own key in AI setup — this app has none."}
           </p>
 
           <textarea
             value={source}
-            onChange={(e) => setSource(e.target.value)}
+            onChange={(e) => {
+              setSource(e.target.value);
+              setCopilot(null);
+            }}
             onPaste={onPaste}
             spellCheck={false}
             placeholder="Paste Markdown here…"
@@ -489,18 +548,21 @@ export function CompilerApp() {
             )}
           </div>
 
-          {issues.length > 0 && (
-            <div className="max-h-40 overflow-auto border-t border-border bg-surface px-4 py-3 text-sm">
-              <p className="mb-1 font-medium text-danger">Validation</p>
-              <ul className="space-y-1 text-muted">
-                {issues.map((issue, i) => (
-                  <li key={`${issue.code}-${i}`}>
-                    <span className="font-mono text-xs text-fg/70">{issue.code}</span> {issue.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {issues.length > 0 || copilot ? (
+            <ValidationPanel
+              issues={issues}
+              loading={copilotLoading}
+              error={copilotError}
+              proposal={copilot}
+              canAi={canAiFix}
+              onFix={runCopilot}
+              onApply={applyCopilot}
+              onDismiss={() => {
+                setCopilot(null);
+                setCopilotError(null);
+              }}
+            />
+          ) : null}
         </section>
       </div>
       {settingsOpen ? (

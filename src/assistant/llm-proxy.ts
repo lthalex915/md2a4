@@ -16,6 +16,11 @@ export type LlmChatResult =
   | { ok: true; text: string }
   | { ok: false; error: string };
 
+/**
+ * Forward a tiny chat-completions call using **only** the key the user typed
+ * in AI setup. This must never read `process.env.XAI_API_KEY`,
+ * `OPENAI_API_KEY`, or any other platform/owner secret.
+ */
 export const llmChat = createServerFn({ method: "POST" })
   .validator((d: LlmChatInput) => d)
   .handler(async ({ data }): Promise<LlmChatResult> => {

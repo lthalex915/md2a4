@@ -22,11 +22,12 @@ This file is the contract for a coding agent. Implement exactly this product. Do
 - Allowed: wrap existing blocks in `:::list` / `:::terms` / `:::aside` / `:::example` / `:::equation`; fill YAML keys from headings already in the notes; repair `$` / `$$` / `\begin{align}` delimiters; convert Word/Docs/HTML paste to Markdown.
 - Forbidden in prepare: new sentences, paraphrasing, invented cards, empty boxes, writing HTML/CSS.
 - The author must review and apply. Compile still parse → IR → render → validate on the applied source.
-- AI is optional and **user-keyed**. The app must not spend a platform/owner API key for Prepare. Store the key in the browser only; proxy chat-completions with SSRF checks (https, no private hosts).
+- AI is optional and **user-keyed (BYOK)**. The app must not spend a platform/owner API key (`XAI_API_KEY` or any `process.env` secret) for Prepare, Copilot, or Test connection. Store the key in the browser only; proxy chat-completions with SSRF checks (https, no private hosts). The request body `apiKey` is the sole credential.
 - Support OpenAI-compatible providers (OpenAI, OpenRouter, DeepSeek, xAI, Groq, Mistral, Together, custom base URL).
 - Each AI feature is a toggle, default **off**. Heuristics always run.
-- To save tokens, AI may only do tiny jobs (classify a few titles, leftover `$`, leftover HTML, copy title/chapter). Never send the full document for a rewrite. Cap prompt size and `max_tokens`.
+- To save tokens, AI may only do tiny jobs (classify a few titles, leftover `$`, leftover HTML, copy title/chapter, small `{from,to}` source patches on validation errors). Never send the full document for a rewrite. Cap prompt size and `max_tokens`.
 - Fidelity-check AI output against the source; discard if it invents prose.
+- **Fidelity copilot** (feature 6): after Compile, if validation errors remain, propose source edits (local heuristics first: strip emoji, repair `$` delimiters, drop empty fences). Optional BYOK JSON patches. Review + apply, then recompile. Never writes HTML/CSS. Compiler-only failures (MathJax config, theme forbids) are not “fixed” by inventing notes.
 
 **Ease of use (required):**
 - Runs in the browser. Zero install beyond opening `index.html` (or a tiny local static server if modules require it).

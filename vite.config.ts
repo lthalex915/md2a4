@@ -12,6 +12,12 @@ import { grokPwaPlugin } from "./scripts/grok-pwa-plugin.mjs";
 import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 import { isMigrationFile } from "./scripts/migration-plan.mjs";
 
+// Local ZIP / git clones have no sandbox `.grok/app-env.json`. Default auth off
+// so md2a4 never shows a sign-in wall. An explicit env value still wins.
+if (!process.env.VITE_AUTH_ENABLED) {
+  process.env.VITE_AUTH_ENABLED = "false";
+}
+
 /** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
 function hasGlobbedMigrations(root: string): boolean {
   try {

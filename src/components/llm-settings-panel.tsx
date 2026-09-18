@@ -67,8 +67,8 @@ export function LlmSettingsPanel({ settings, onChange, onClose }: Props) {
           AI setup
         </p>
         <p className="mt-1 text-sm text-muted">
-          Your key stays in this browser. Prepare still runs locally; AI only does tiny
-          classification jobs when a feature is on.
+          Bring your own key. This app never uses a built-in or platform API key. The key
+          stays in this browser. Compile itself never calls a model.
         </p>
 
         <label className="mt-4 block text-sm text-muted">

@@ -6,6 +6,8 @@ export { proposeFrontMatter, mergeYamlFields } from "./front-matter.ts";
 export { isFaithful } from "./fidelity.ts";
 export { enhanceWithAi } from "./ai-enhance.ts";
 export { llmChat } from "./llm-proxy.ts";
+export { proposeFidelityFix, fixNotesLocal, SOURCE_FIXABLE } from "./fidelity-copilot.ts";
+export type { CopilotResult, CopilotPatch } from "./fidelity-copilot.ts";
 export {
   DEFAULT_LLM_SETTINGS,
   LLM_PROVIDERS,
