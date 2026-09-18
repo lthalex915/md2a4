@@ -137,11 +137,15 @@ Local passes (always available, **no key**):
 This project **does not** use a built-in OpenAI, xAI, or other service key. If you want extra help, you buy/create a key from a provider and paste it yourself.
 
 1. Click **AI setup**.
-2. Pick a provider (OpenAI, OpenRouter, DeepSeek, xAI, Groq, Mistral, Together, or a custom OpenAI-compatible URL).
+2. Pick a provider. **DeepSeek** or **OpenRouter** is the path this app is tuned for.
 3. Paste **your** API key. It stays in this browser only.
-4. Turn on only the features you want (all default **off**).
-5. Optional: **Test connection**.
-6. Prefer a small/cheap model (`gpt-4o-mini`, `deepseek-chat`, `grok-3-mini`, …).
+4. Leave the model as **DeepSeek V4.1 Flash** unless you know you want another:
+   - DeepSeek API: `deepseek-flash`
+   - OpenRouter: `deepseek/deepseek-v4.1-flash`
+5. Turn on only the features you want (all default **off**).
+6. Optional: **Test connection**.
+
+Flash thinks by default. The app turns thinking **off** and asks for JSON, so these tiny jobs stay fast and cheap. Replies are **not** capped with `max_tokens`.
 
 When a feature is on, the model only sees a few short snippets — never a full-document rewrite:
 

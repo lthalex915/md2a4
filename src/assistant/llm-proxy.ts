@@ -2,24 +2,70 @@ import { createServerFn } from "@tanstack/react-start";
 import { chatCompletionsUrl } from "./llm-url.ts";
 
 const MAX_MESSAGE_CHARS = 2500;
-const MAX_TOKENS = 160;
+const PING_TIMEOUT_MS = 20_000;
+const TASK_TIMEOUT_MS = 120_000;
 
 export type LlmChatInput = {
   baseUrl: string;
   apiKey: string;
   model: string;
   messages: { role: "system" | "user"; content: string }[];
+  /** Only for pings. Omit on real tasks so the provider does not cut the reply short. */
   maxTokens?: number;
+  /** Ask for a JSON object (default on tasks). Pings should set this false. */
+  json?: boolean;
 };
 
 export type LlmChatResult =
   | { ok: true; text: string }
   | { ok: false; error: string };
 
+export function isDeepSeekTarget(model: string, url = ""): boolean {
+  const m = model.toLowerCase();
+  const u = url.toLowerCase();
+  return m.includes("deepseek") || u.includes("deepseek.com");
+}
+
+export function chatCompletionsBody(input: {
+  model: string;
+  messages: { role: string; content: string }[];
+  maxTokens?: number;
+  json?: boolean;
+  url?: string;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: input.model,
+    temperature: 0,
+    messages: input.messages,
+  };
+  if (typeof input.maxTokens === "number" && Number.isFinite(input.maxTokens) && input.maxTokens > 0) {
+    body.max_tokens = Math.floor(input.maxTokens);
+  }
+
+  const url = input.url ?? "";
+  const deepseek = isDeepSeekTarget(input.model, url);
+  if (deepseek) {
+    // V4.1 Flash thinks at high effort by default. That burns tokens and
+    // wraps JSON in a chain-of-thought — disable it for these tiny jobs.
+    body.thinking = { type: "disabled" };
+    body.reasoning_effort = "none";
+    if (url.includes("openrouter.ai")) {
+      body.reasoning = { effort: "none" };
+    }
+    if (input.json) {
+      body.response_format = { type: "json_object" };
+    }
+  }
+  return body;
+}
+
 /**
  * Forward a tiny chat-completions call using **only** the key the user typed
  * in AI setup. This must never read `process.env.XAI_API_KEY`,
  * `OPENAI_API_KEY`, or any other platform/owner secret.
+ *
+ * Output tokens are uncapped unless the caller passes `maxTokens` (used only
+ * by Test connection). Prompt size stays bounded.
  */
 export const llmChat = createServerFn({ method: "POST" })
   .validator((d: LlmChatInput) => d)
@@ -46,7 +92,20 @@ export const llmChat = createServerFn({ method: "POST" })
       return { ok: false, error: "Nothing to send to the model." };
     }
 
-    const maxTokens = Math.max(4, Math.min(MAX_TOKENS, Number(data?.maxTokens) || 80));
+    const requested = Number(data?.maxTokens);
+    const maxTokens =
+      data?.maxTokens != null && Number.isFinite(requested) && requested > 0
+        ? Math.floor(requested)
+        : undefined;
+    const json = data?.json ?? maxTokens == null;
+    const body = chatCompletionsBody({
+      model,
+      messages: compact,
+      maxTokens,
+      json,
+      url,
+    });
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
@@ -61,13 +120,8 @@ export const llmChat = createServerFn({ method: "POST" })
       res = await fetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          model,
-          temperature: 0,
-          max_tokens: maxTokens,
-          messages: compact,
-        }),
-        signal: AbortSignal.timeout(20_000),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(maxTokens != null ? PING_TIMEOUT_MS : TASK_TIMEOUT_MS),
       });
     } catch {
       return { ok: false, error: "The model request timed out." };
@@ -80,9 +134,9 @@ export const llmChat = createServerFn({ method: "POST" })
       return { ok: false, error: `Model request failed (${res.status}).` };
     }
 
-    const body = (await res.json()) as {
+    const payload = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
     };
-    const text = body.choices?.[0]?.message?.content ?? "";
+    const text = payload.choices?.[0]?.message?.content ?? "";
     return { ok: true, text };
   });

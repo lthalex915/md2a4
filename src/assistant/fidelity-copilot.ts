@@ -189,7 +189,6 @@ async function askPatches(
       baseUrl: settings.baseUrl,
       apiKey: settings.apiKey,
       model: settings.model,
-      maxTokens: 160,
       messages: [
         { role: "system", content: "JSON only. Copy words from the notes. Do not add sentences." },
         {

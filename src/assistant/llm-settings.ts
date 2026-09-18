@@ -18,6 +18,41 @@ export type LlmSettings = {
   features: Record<AiFeatureId, boolean>;
 };
 
+/** Official DeepSeek API id for V4.1 Flash. */
+export const DEEPSEEK_FLASH_MODEL = "deepseek-flash";
+/** OpenRouter slug for the same model. */
+export const OPENROUTER_DEEPSEEK_FLASH_MODEL = "deepseek/deepseek-v4.1-flash";
+
+const DEEPSEEK_API_ALIASES = new Set([
+  "deepseek-chat",
+  "deepseek-reasoner",
+  "deepseek-v4-flash",
+  "deepseek-v4-flash-vision-exp",
+  "deepseek-v4.1-flash",
+  "deepseek-v4-1-flash",
+]);
+
+const OPENROUTER_DEEPSEEK_ALIASES = new Set([
+  "deepseek/deepseek-chat",
+  "deepseek/deepseek-reasoner",
+  "deepseek/deepseek-v4-flash",
+  "deepseek/deepseek-v4-flash-0731",
+  "deepseek/deepseek-v4-flash-vision-exp",
+  "deepseek/deepseek-flash",
+]);
+
+export function canonicalModel(provider: LlmProviderId, model: string): string {
+  const m = model.trim();
+  if (provider === "deepseek") {
+    if (!m || DEEPSEEK_API_ALIASES.has(m)) return DEEPSEEK_FLASH_MODEL;
+    return m;
+  }
+  if (provider === "openrouter" && OPENROUTER_DEEPSEEK_ALIASES.has(m)) {
+    return OPENROUTER_DEEPSEEK_FLASH_MODEL;
+  }
+  return m;
+}
+
 export const LLM_PROVIDERS: {
   id: LlmProviderId;
   label: string;
@@ -36,15 +71,15 @@ export const LLM_PROVIDERS: {
     id: "openrouter",
     label: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
-    model: "openai/gpt-4o-mini",
-    hint: "One key, many models. Keep the model id cheap.",
+    model: OPENROUTER_DEEPSEEK_FLASH_MODEL,
+    hint: "Default model is DeepSeek V4.1 Flash. Thinking is turned off automatically so these tiny JSON jobs stay cheap.",
   },
   {
     id: "deepseek",
     label: "DeepSeek",
     baseUrl: "https://api.deepseek.com/v1",
-    model: "deepseek-chat",
-    hint: "OpenAI-compatible. deepseek-chat is enough for these tasks.",
+    model: DEEPSEEK_FLASH_MODEL,
+    hint: "DeepSeek V4.1 Flash (deepseek-flash). The app disables thinking mode so replies are JSON, not a long chain-of-thought.",
   },
   {
     id: "xai",
@@ -142,7 +177,7 @@ export function loadLlmSettings(): LlmSettings {
     return {
       provider,
       baseUrl: String(parsed.baseUrl || preset.baseUrl),
-      model: String(parsed.model || preset.model),
+      model: canonicalModel(provider, String(parsed.model || preset.model)),
       apiKey: String(parsed.apiKey || ""),
       features: {
         structure: Boolean(parsed.features?.structure),
@@ -167,7 +202,7 @@ export function applyProvider(settings: LlmSettings, id: LlmProviderId): LlmSett
     ...settings,
     provider: id,
     baseUrl: preset.baseUrl || settings.baseUrl,
-    model: preset.model || settings.model,
+    model: canonicalModel(id, preset.model || settings.model),
   };
 }
 

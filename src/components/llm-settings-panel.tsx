@@ -41,6 +41,7 @@ export function LlmSettingsPanel({ settings, onChange, onClose }: Props) {
         apiKey: settings.apiKey,
         model: settings.model,
         maxTokens: 4,
+        json: false,
         messages: [{ role: "user", content: "Reply with pong" }],
       },
     }).catch(() => ({ ok: false as const, error: "Request failed." }));
@@ -106,7 +107,7 @@ export function LlmSettingsPanel({ settings, onChange, onClose }: Props) {
             value={settings.model}
             onChange={(e) => set({ model: e.target.value })}
             spellCheck={false}
-            placeholder="gpt-4o-mini"
+            placeholder="deepseek-flash"
             className="mt-1 h-11 w-full rounded-sm border border-border bg-bg px-3 font-mono text-sm text-fg placeholder:text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </label>

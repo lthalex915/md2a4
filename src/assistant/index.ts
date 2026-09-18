@@ -12,6 +12,8 @@ export {
   DEFAULT_LLM_SETTINGS,
   LLM_PROVIDERS,
   AI_FEATURES,
+  DEEPSEEK_FLASH_MODEL,
+  OPENROUTER_DEEPSEEK_FLASH_MODEL,
   loadLlmSettings,
   saveLlmSettings,
   applyProvider,

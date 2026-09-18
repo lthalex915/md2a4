@@ -1,6 +1,14 @@
+/** Strip DeepSeek / R1 think blocks so JSON mode leftovers still parse. */
+export function unwrapModelText(text: string): string {
+  return String(text ?? "")
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/```(?:thinking|reasoning)[\s\S]*?```/gi, "")
+    .trim();
+}
+
 /** Pull a JSON object/array out of a model reply (raw or fenced). */
 export function parseModelJson(text: string): unknown | null {
-  const raw = text.trim();
+  const raw = unwrapModelText(text);
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   const body = fence ? fence[1].trim() : raw;
   const start = body.search(/[{[]/);

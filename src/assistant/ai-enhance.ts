@@ -17,14 +17,12 @@ const SYS = "JSON only. Copy words from the notes. Do not add sentences.";
 async function ask(
   settings: LlmSettings,
   user: string,
-  maxTokens: number,
 ): Promise<{ ok: true; json: unknown } | { ok: false; error: string }> {
   const res = await llmChat({
     data: {
       baseUrl: settings.baseUrl,
       apiKey: settings.apiKey,
       model: settings.model,
-      maxTokens,
       messages: [
         { role: "system", content: SYS },
         { role: "user", content: user },
@@ -72,7 +70,6 @@ export async function enhanceWithAi(
       const res = await ask(
         settings,
         `Strip tags. Keep the same words. Return JSON {"md":"..."}\n\n${frag}`,
-        120,
       );
       if (res.ok && res.json && typeof res.json === "object" && "md" in res.json) {
         const next = String((res.json as { md: unknown }).md ?? "");
@@ -95,7 +92,6 @@ export async function enhanceWithAi(
       const res = await ask(
         settings,
         `Each line has a stray $. Classify math or currency. JSON object of index→label.\n${odd.map((l, i) => `${i}: ${l}`).join("\n")}`,
-        80,
       );
       if (res.ok && res.json && typeof res.json === "object") {
         const labels = res.json as Record<string, unknown>;
@@ -128,7 +124,6 @@ export async function enhanceWithAi(
       const res = await ask(
         settings,
         `Classify each title that sits above a list. Values: list, aside, skip. JSON object title→value.\n${cands.map((c) => c.title).join("\n")}`,
-        100,
       );
       if (res.ok && res.json && typeof res.json === "object") {
         const hints: Record<string, StructureHint> = {};
@@ -165,7 +160,6 @@ export async function enhanceWithAi(
       const res = await ask(
         settings,
         `Copy title and chapter number if present. JSON {"title":string|null,"chapter":string|null}. Chapter must be like "4" or "4A".\n${head}`,
-        60,
       );
       if (res.ok && res.json && typeof res.json === "object") {
         const rec = res.json as { title?: unknown; chapter?: unknown };
