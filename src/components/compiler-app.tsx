@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import {
   AlertCircle,
   Check,
@@ -6,8 +6,10 @@ import {
   FileUp,
   Printer,
   BookOpen,
+  Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PreparePanel, emptyKinds } from "@/components/prepare-panel";
 import {
   compile,
   SAMPLE_MARKDOWN,
@@ -15,6 +17,16 @@ import {
   type ThemeId,
   type ValidationIssue,
 } from "@/compiler";
+import {
+  applyKinds,
+  dialectImport,
+  grokPrepare,
+  htmlToMarkdown,
+  isRichPaste,
+  prepareLocal,
+  type ChangeKind,
+  type PrepareResult,
+} from "@/assistant";
 import { cn } from "@/lib/utils";
 
 const THEME_LABELS: Record<ThemeId, string> = {
@@ -44,6 +56,12 @@ export function CompilerApp() {
   const [blockCount, setBlockCount] = useState<number | null>(null);
   const [status, setStatus] = useState("Paste Markdown, then Compile.");
   const [hydrated, setHydrated] = useState(false);
+  const [localPrepare, setLocalPrepare] = useState<PrepareResult | null>(null);
+  const [grokResult, setGrokResult] = useState<PrepareResult | null>(null);
+  const [grokError, setGrokError] = useState<string | null>(null);
+  const [grokLoading, setGrokLoading] = useState(false);
+  const [useGrok, setUseGrok] = useState(false);
+  const [kinds, setKinds] = useState<Set<ChangeKind>>(new Set());
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -114,10 +132,87 @@ export function CompilerApp() {
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result || "");
-      setSource(text);
-      setStatus(`Loaded ${file.name}. Click Compile to preview.`);
+      const isHtml = /\.html?$/i.test(file.name) || file.type === "text/html" || isRichPaste(text);
+      const next = isHtml ? htmlToMarkdown(text) : text;
+      setSource(next);
+      setStatus(
+        isHtml
+          ? `Converted ${file.name} to Markdown. Review, then Compile.`
+          : `Loaded ${file.name}. Click Compile to preview.`,
+      );
     };
     reader.readAsText(file);
+  };
+
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const html = e.clipboardData.getData("text/html");
+    if (!html || !isRichPaste(html)) return;
+    e.preventDefault();
+    const md = htmlToMarkdown(html);
+    const el = e.currentTarget;
+    const start = el.selectionStart ?? source.length;
+    const end = el.selectionEnd ?? source.length;
+    const next = source.slice(0, start) + md + source.slice(end);
+    setSource(next);
+    setStatus("Converted pasted document to Markdown. Review, then Compile.");
+  };
+
+  const runPrepare = () => {
+    if (!source.trim()) {
+      setStatus("Paste notes first, then Prepare.");
+      return;
+    }
+    const local = prepareLocal(source);
+    setLocalPrepare(local);
+    setKinds(emptyKinds(local.changes));
+    setGrokResult(null);
+    setGrokError(null);
+    setUseGrok(false);
+    setGrokLoading(true);
+    setStatus("Preparing notes… review the proposal before Compile.");
+    const imported = dialectImport(source);
+    void grokPrepare({ data: { source: imported, theme } })
+      .then((res) => {
+        if (res.ok) {
+          setGrokResult({
+            source: imported,
+            markdown: res.markdown,
+            changes: res.changes.length ? res.changes : local.changes,
+            via: "grok",
+          });
+          setUseGrok(true);
+        } else {
+          setGrokError(res.error);
+        }
+      })
+      .catch(() => {
+        setGrokError("Grok prepare failed.");
+      })
+      .finally(() => setGrokLoading(false));
+  };
+
+  const proposedMarkdown = (() => {
+    if (!localPrepare) return source;
+    if (useGrok && grokResult) return grokResult.markdown;
+    if (kinds.size === 0) return localPrepare.source;
+    return applyKinds(localPrepare.source, kinds);
+  })();
+
+  const toggleKind = (kind: ChangeKind) => {
+    setUseGrok(false);
+    setKinds((prev) => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  };
+
+  const applyPrepare = () => {
+    setSource(proposedMarkdown);
+    setLocalPrepare(null);
+    setGrokResult(null);
+    setStatus("Applied prepared Markdown. Click Compile to preview.");
   };
 
   const download = () => {
@@ -190,6 +285,11 @@ export function CompilerApp() {
             <code className="font-mono text-fg/80">$$x$$</code>. Amounts like{" "}
             <code className="font-mono text-fg/80">$100</code> stay as text.
           </p>
+          <p>
+            <strong className="text-fg/80">Prepare notes</strong> wraps lists/terms/asides, fills YAML
+            from headings already in the notes, repairs math delimiters, and converts Word/Docs paste.
+            It does not invent content. Compile stays a separate, deterministic step.
+          </p>
         </div>
       </details>
     ),
@@ -237,7 +337,7 @@ export function CompilerApp() {
             <input
               ref={fileRef}
               type="file"
-              accept=".md,.txt,text/markdown,text/plain"
+              accept=".md,.txt,.html,.htm,text/markdown,text/plain,text/html"
               className="sr-only"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -248,6 +348,10 @@ export function CompilerApp() {
             <Button variant="secondary" size="sm" type="button" onClick={() => fileRef.current?.click()}>
               <FileUp />
               Open file
+            </Button>
+            <Button variant="ghost" size="sm" type="button" onClick={runPrepare}>
+              <Wand2 />
+              Prepare notes
             </Button>
             <Button
               variant="ghost"
@@ -266,11 +370,32 @@ export function CompilerApp() {
           <textarea
             value={source}
             onChange={(e) => setSource(e.target.value)}
+            onPaste={onPaste}
             spellCheck={false}
             placeholder="Paste Markdown here…"
             className="min-h-64 flex-1 resize-y rounded-md border border-border bg-surface p-4 font-mono text-sm leading-relaxed text-fg placeholder:text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Markdown source"
           />
+
+          {localPrepare ? (
+            <PreparePanel
+              local={localPrepare}
+              proposed={proposedMarkdown}
+              kinds={kinds}
+              onToggleKind={toggleKind}
+              grokLoading={grokLoading}
+              grokError={grokError}
+              grok={grokResult}
+              useGrok={useGrok}
+              onToggleGrok={setUseGrok}
+              onApply={applyPrepare}
+              onDismiss={() => {
+                setLocalPrepare(null);
+                setGrokResult(null);
+                setGrokLoading(false);
+              }}
+            />
+          ) : null}
 
           {dialect}
 

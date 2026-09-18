@@ -23,6 +23,27 @@ The theme dropdown overrides `theme` in YAML. Missing front-matter keys omit tha
 
 In the print dialog: A4 portrait, backgrounds enabled. The downloaded file is self-contained except MathJax, which loads from a CDN.
 
+## Prepare notes (optional)
+
+**Prepare notes** sits *in front of* the compiler. It never writes the A4 HTML.
+
+1. Paste messy notes (plain Markdown, Word, Google Docs, or `.html`).
+2. Click **Prepare notes**.
+3. Review the proposal. Uncheck a change, or toggle **Use Grok refinement**.
+4. **Apply to editor**, then **Compile** as usual.
+
+What it may do, using only wording already in the notes:
+
+| Pass | Effect |
+| --- | --- |
+| Import | Word / Docs / Notion HTML → Markdown |
+| Math | Pair `$...$`, wrap `\begin{align}`, `$F_net$` → `$F_{net}$` |
+| Structure | Bold title + list → `:::list`; term lines → `:::terms`; Key Points → `:::aside` |
+| Front matter | YAML `title` / `chapter` from `#` headings and a `Chapter N` line |
+
+It will not summarize, add examples, or fill empty sidebar cards. Grok is used only when you click Prepare; Compile stays deterministic and works offline.
+
+
 ## Markdown dialect
 
 Optional YAML front matter:

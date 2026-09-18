@@ -13,9 +13,16 @@ This file is the contract for a coding agent. Implement exactly this product. Do
 **What it does:** User pastes or opens a Markdown file, picks a style, clicks Compile, previews the A4 page, downloads a single `.html` file that prints correctly on A4.
 
 **What it must not do:**
-- Call an LLM to rewrite, summarize, extract “key points,” or invent sidebars.
+- Call an LLM inside **Compile** to rewrite, summarize, extract “key points,” or invent sidebars.
 - Regenerate theme CSS. CSS is copied verbatim from locked theme files.
 - Add learning objectives, key-term boxes, tables, figures, captions, chapter numbers, footers, or headings that are not in the source (or in explicit Markdown front matter taken from the source).
+
+**Optional prepare assistant (not the compiler):**
+- A **Prepare notes** action may run *before* Compile. It proposes Markdown only.
+- Allowed: wrap existing blocks in `:::list` / `:::terms` / `:::aside` / `:::example` / `:::equation`; fill YAML keys from headings already in the notes; repair `$` / `$$` / `\begin{align}` delimiters; convert Word/Docs/HTML paste to Markdown.
+- Forbidden in prepare: new sentences, paraphrasing, invented cards, empty boxes, writing HTML/CSS.
+- The author must review and apply. Compile still parse → IR → render → validate on the applied source.
+- Grok is opt-in per Prepare click. Heuristics must work when Grok is unavailable. Fidelity-check LLM output against the source; discard if it invents prose.
 
 **Ease of use (required):**
 - Runs in the browser. Zero install beyond opening `index.html` (or a tiny local static server if modules require it).
