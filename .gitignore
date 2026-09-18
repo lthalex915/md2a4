@@ -1,0 +1,44 @@
+# dependencies
+node_modules/
+.node_modules.lock
+
+# build / framework
+dist/
+.output/
+.nitro/
+.vinxi/
+.tanstack/
+.vercel/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# logs / OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# editor
+.idea/
+.vscode/
+*.swp
+
+# local QA / sandbox (not part of the product)
+.grok/
+artifacts/
+screenshots/
+attachments/
+public/__grok/
+tmp-*
+/tmp/
+AGENTS.md
+
+
+# generated coverage
+coverage/

@@ -1,0 +1,156 @@
+@page {
+  size: A4 portrait;
+  margin: 18mm 18mm 18mm 18mm;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 11pt;
+  line-height: 1.45;
+  color: #000;
+  background-color: #fff;
+  margin: 0 auto;
+  padding: 18mm;
+  max-width: 210mm;
+  min-height: 297mm;
+  text-rendering: optimizeLegibility;
+}
+
+h1.doc-title {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 18pt;
+  font-weight: bold;
+  margin: 0 0 12pt 0;
+  page-break-after: avoid;
+}
+
+.chapter-line {
+  font-size: 11pt;
+  letter-spacing: 0.06em;
+  margin: 0 0 4pt 0;
+  page-break-after: avoid;
+}
+
+h2.section {
+  font-size: 13pt;
+  font-weight: bold;
+  margin: 16pt 0 8pt 0;
+  page-break-after: avoid;
+}
+
+h3.subsection {
+  font-size: 12pt;
+  font-weight: bold;
+  margin: 12pt 0 6pt 0;
+  page-break-after: avoid;
+}
+
+p {
+  margin: 0 0 10pt 0;
+  text-align: justify;
+  orphans: 3;
+  widows: 3;
+}
+
+ul, ol {
+  margin: 0 0 10pt 0;
+  padding-left: 22pt;
+}
+
+li { margin-bottom: 4pt; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10pt 0;
+  font-size: 10pt;
+  page-break-inside: avoid;
+}
+
+th, td {
+  border: 1px solid #444;
+  padding: 4pt 8pt;
+  text-align: left;
+}
+
+caption, .caption {
+  caption-side: top;
+  text-align: left;
+  font-style: italic;
+  margin: 0 0 6pt 0;
+  page-break-after: avoid;
+}
+
+.math-block {
+  margin: 10pt 0;
+  text-align: center;
+  page-break-inside: avoid;
+}
+
+.example-box,
+.keep-together,
+figure {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.example-box {
+  border: 1px solid #444;
+  padding: 8pt 12pt;
+  margin: 12pt 0;
+}
+
+.example-box .example-title {
+  font-weight: bold;
+  margin: 0 0 6pt 0;
+}
+
+.note {
+  font-size: 10pt;
+  margin: 8pt 0;
+  padding-left: 10pt;
+  border-left: 2pt solid #666;
+}
+
+pre, code {
+  font-family: "Courier New", Courier, monospace;
+}
+
+pre {
+  background: #f5f5f5;
+  padding: 8pt;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+
+img {
+  max-width: 100%;
+}
+
+dl.terms {
+  margin: 0 0 10pt 0;
+}
+
+dl.terms dt {
+  font-weight: bold;
+  page-break-after: avoid;
+}
+
+dl.terms dd {
+  margin: 0 0 8pt 18pt;
+}
+
+h1, h2, h3, .math-block, .example-box, table {
+  page-break-after: avoid;
+}
+
+@media print {
+  body {
+    max-width: none;
+    padding: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
